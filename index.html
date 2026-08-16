@@ -793,6 +793,71 @@
             margin-bottom: 10px;
         }
 
+        /* ====================================================================
+           TELA DE SKINS
+           Ver Game.showSkins(). Preview grande no topo (bolinha equipada)
+           + grade de botões, um por cor. Bloqueadas ficam esmaecidas com
+           cadeado; a equipada tem borda amarela igual ao resto do menu.
+           ==================================================================== */
+        .skin-preview-circle {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            margin: 6px auto 14px auto;
+        }
+
+        .skin-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .skin-swatch {
+            background: transparent;
+            border: 2px solid #ffffff33;
+            border-radius: 8px;
+            padding: 10px 4px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+
+        .skin-swatch .skin-dot {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+        }
+
+        .skin-swatch .skin-label {
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            text-align: center;
+        }
+
+        .skin-swatch:hover:not(.locked) {
+            border-color: #ffffffaa;
+            transform: scale(1.05);
+        }
+
+        .skin-swatch.selected {
+            border-color: #ffff00;
+            box-shadow: 0 0 10px #ffff0066;
+        }
+
+        .skin-swatch.locked {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .skin-swatch.locked .skin-label {
+            color: #aaaaaa;
+        }
+
         .menu-content .menu-button.selected::before {
             content: '▶';
             position: absolute;
@@ -1512,6 +1577,14 @@
         if (canvas.width === newWidth && canvas.height === newHeight) return;
         canvas.width = newWidth;
         canvas.height = newHeight;
+        // Redefinir canvas.width/height reseta o contexto 2D pro padrão,
+        // então isso precisa ser reaplicado aqui toda vez. As sprites são
+        // pixel art (desenhadas no LibreSprite), então desligamos a
+        // suavização: com ela ligada, o navegador borra/interpola os
+        // pixels ao escalar a imagem, o que estraga o visual pixel art.
+        // Desligada, ele repete os pixels sem misturar cores (nearest
+        // neighbor), mantendo as bordas nítidas.
+        ctx.imageSmoothingEnabled = false;
     }
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
@@ -1546,8 +1619,22 @@
         }
         
         loadAll() {
-            this.sprites.juros = this.loadImage('sprites/juros.jpeg');
             this.sprites.fracao = this.loadImage('sprites/fracao.jpeg');
+
+            // ==================== AGIOTA: SPRITES ANIMADOS ====================
+            // Boss "Juros Simples e Composto" — mesmo esquema do Professor e
+            // da Divisora: 3 frames NORMAL (HP > 50%) + 3 frames CANSADO
+            // (HP <= 50%). Ver ANIMATED_BOSSES logo abaixo.
+            this.sprites.agiotaNormal = [
+                this.loadImage('sprites/Agiota-normal1.png'),
+                this.loadImage('sprites/Agiota-normal2.png'),
+                this.loadImage('sprites/Agiota-normal3.png')
+            ];
+            this.sprites.agiotaCansado = [
+                this.loadImage('sprites/Agiota-cansado1.png'),
+                this.loadImage('sprites/Agiota-cansado2.png'),
+                this.loadImage('sprites/Agiota-cansado3.png')
+            ];
 
             // ==================== PROFESSOR: SPRITES ANIMADOS ====================
             // O primeiro boss (Professor de Matemática) usa duas sequências de
@@ -1583,12 +1670,13 @@
             ];
 
             const allImages = [
-                this.sprites.juros,
                 this.sprites.fracao,
                 ...this.sprites.profNormal,
                 ...this.sprites.profCansado,
                 ...this.sprites.divisoraNormal,
-                ...this.sprites.divisoraCansada
+                ...this.sprites.divisoraCansada,
+                ...this.sprites.agiotaNormal,
+                ...this.sprites.agiotaCansado
             ];
 
             let total = allImages.length;
@@ -1614,7 +1702,6 @@
         
         get(name) {
             const map = {
-                "Juros Simples e Composto": "juros",
                 "Rei das Frações": "fracao"
             };
             return this.sprites[map[name] || name] || null;
@@ -1626,7 +1713,8 @@
         // loadAll() e adicionar uma entrada aqui.
         static ANIMATED_BOSSES = {
             "Professor de Matemática": { normal: 'profNormal', cansado: 'profCansado' },
-            "Rei das Frações": { normal: 'divisoraNormal', cansado: 'divisoraCansada' }
+            "Rei das Frações": { normal: 'divisoraNormal', cansado: 'divisoraCansada' },
+            "Juros Simples e Composto": { normal: 'agiotaNormal', cansado: 'agiotaCansado' }
         };
 
         isAnimatedBoss(bossName) {
@@ -2604,6 +2692,97 @@
         }
     }
 
+    // ====================================================================
+    // SKINS DA ALMA (BOLINHA DO JOGADOR)
+    // Cada skin é uma cor alternativa, desbloqueada permanentemente ao
+    // alcançar um NÍVEL MÍNIMO na conta (highestLevel — ver
+    // ProgressService, guardado no Supabase, então funciona em qualquer
+    // aparelho onde o jogador logar). Não precisa ser exatamente aquele
+    // nível: qualquer nível igual ou maior que unlockLevel já desbloqueia.
+    //
+    // "base" = cor sólida da bolinha. "light" = tom mais claro usado no
+    // anel de brilho ao redor (mesmo esquema que a bolinha vermelha
+    // original já usava: base #ff0000 + light #ff4444).
+    //
+    // Para adicionar uma cor nova: só um objeto aqui. O jogo cuida
+    // sozinho de mostrar ela (bloqueada/desbloqueada) na tela de SKINS
+    // do menu — ver Game.showSkins().
+    // ====================================================================
+    const SOUL_SKINS = [
+        { id: 'red',    label: 'Vermelha', base: '#ff0000', light: '#ff4444', unlockLevel: 1 },
+        { id: 'purple', label: 'Roxa',      base: '#a855f7', light: '#c084fc', unlockLevel: 3 },
+        { id: 'blue',   label: 'Azul',      base: '#3b82f6', light: '#60a5fa', unlockLevel: 5 },
+        { id: 'yellow', label: 'Amarela',   base: '#eab308', light: '#facc15', unlockLevel: 7 },
+        { id: 'green',  label: 'Verde',     base: '#22c55e', light: '#4ade80', unlockLevel: 9 },
+        { id: 'orange', label: 'Laranja',   base: '#f97316', light: '#fb923c', unlockLevel: 11 },
+        { id: 'cyan',   label: 'Ciano',     base: '#06b6d4', light: '#22d3ee', unlockLevel: 13 },
+        { id: 'pink',   label: 'Rosa',      base: '#ec4899', light: '#f472b6', unlockLevel: 15 }
+    ];
+
+    function getSkinById(id) {
+        return SOUL_SKINS.find(s => s.id === id) || SOUL_SKINS[0];
+    }
+
+    // ====================================================================
+    // PROGRESSO PERMANENTE DA CONTA (nível mais alto já alcançado + skin
+    // escolhida). Guardado na tabela "profiles" do Supabase, nas colunas
+    // highest_level e selected_skin — ver SQL de configuração no final
+    // desta explicação. Funciona em qualquer aparelho onde o jogador
+    // logar, já que fica junto com a conta (mesma tabela usada para o
+    // nome de usuário — ver AuthService).
+    //
+    // Sem sessão ativa, os métodos aqui devolvem/ignoram silenciosamente
+    // (nível 1, skin vermelha) sem tentar acessar a rede — mas como o
+    // jogo exige login antes do menu, isso só serve como proteção extra.
+    // ====================================================================
+    class ProgressService {
+        static async getProfile() {
+            const { data: userData } = await supabaseClient.auth.getUser();
+            const userId = userData && userData.user ? userData.user.id : null;
+            if (!userId) return { highestLevel: 1, selectedSkin: 'red' };
+
+            const { data, error } = await supabaseClient
+                .from('profiles')
+                .select('highest_level, selected_skin')
+                .eq('id', userId)
+                .maybeSingle();
+
+            if (error || !data) return { highestLevel: 1, selectedSkin: 'red' };
+
+            return {
+                highestLevel: data.highest_level || 1,
+                selectedSkin: data.selected_skin || 'red'
+            };
+        }
+
+        // Só sobe: o filtro .lt() faz o UPDATE só acontecer se o nível
+        // salvo no banco ainda for MENOR que o novo. Isso evita que o
+        // registro "regrida" caso, por algum motivo, uma chamada antiga
+        // termine depois de uma mais recente.
+        static async reportLevelReached(level) {
+            const { data: userData } = await supabaseClient.auth.getUser();
+            const userId = userData && userData.user ? userData.user.id : null;
+            if (!userId) return;
+
+            await supabaseClient
+                .from('profiles')
+                .update({ highest_level: level })
+                .eq('id', userId)
+                .lt('highest_level', level);
+        }
+
+        static async setSelectedSkin(skinId) {
+            const { data: userData } = await supabaseClient.auth.getUser();
+            const userId = userData && userData.user ? userData.user.id : null;
+            if (!userId) return;
+
+            await supabaseClient
+                .from('profiles')
+                .update({ selected_skin: skinId })
+                .eq('id', userId);
+        }
+    }
+
     // ==================== ENTIDADES ====================
     class Player {
         constructor() {
@@ -3218,14 +3397,19 @@
             ctx.fillStyle = "#0a0a0a";
             ctx.fillRect(this.arenaX + 2, this.arenaY + 2, this.arenaWidth - 4, this.arenaHeight - 4);
             
+            // Cor da bolinha vem da skin escolhida pelo jogador (ver
+            // SOUL_SKINS/ProgressService) — fallback pra vermelha padrão
+            // se ainda não carregou ou ninguém escolheu nenhuma.
+            const skin = getSkinById(this.game && this.game.selectedSkinId);
+
             ctx.shadowBlur = 15;
-            ctx.shadowColor = "#ff0000aa";
-            ctx.fillStyle = "#ff4444";
+            ctx.shadowColor = skin.base + "aa";
+            ctx.fillStyle = skin.light;
             ctx.beginPath();
             ctx.arc(this.soul.x, this.soul.y, this.soul.size + 2, 0, Math.PI * 2);
             ctx.fill();
             
-            ctx.fillStyle = "#ff0000";
+            ctx.fillStyle = skin.base;
             ctx.beginPath();
             ctx.arc(this.soul.x, this.soul.y, this.soul.size, 0, Math.PI * 2);
             ctx.fill();
@@ -3453,6 +3637,17 @@
             this.bulletHell = new BulletHell(this.canvas, this.ctx, this);
             this.cutscene = new CutsceneManager(this);
             this.enemies = [];
+
+            // ==================== PROGRESSO PERMANENTE (SKINS) ====================
+            // highestLevel = maior nível já alcançado nessa conta, em
+            // qualquer partida (campanha ou infinito) — usado pra saber
+            // quais skins da alma estão desbloqueadas. selectedSkinId =
+            // skin atualmente equipada. Os dois vêm do Supabase (ver
+            // ProgressService/loadProgress()); começam no padrão até
+            // carregar de verdade.
+            this.highestLevel = 1;
+            this.selectedSkinId = 'red';
+
             this.currentEnemyIndex = 0;
             this.inCombat = false;
             this.waitingAnswer = false;
@@ -3820,6 +4015,11 @@
                         case 'ranking':
                             audioSystem.playSound('click');
                             this.showRanking();
+                            break;
+
+                        case 'skins':
+                            audioSystem.playSound('click');
+                            this.showSkins();
                             break;
                             
                         case 'howto':
@@ -4242,6 +4442,7 @@
         
         victory() {
             this.player.addXp(50 + (this.currentEnemyIndex * 30));
+            this.checkLevelUnlock(this.player.level);
             this.updatePlayerHud();
             
             const isFinal = this.currentEnemyIndex === this.enemies.length - 1;
@@ -4461,6 +4662,15 @@
                 gained = Math.round((base + waveBonus) * comboMulti);
                 this.infiniteScore += gained;
                 this.infiniteCorrectAnswered++;
+
+                // Também rende XP (dividido por 4: os pontos do modo
+                // infinito crescem rápido demais com onda/combo pra virar
+                // XP 1 pra 1 — nessa proporção, o ritmo de nível fica
+                // parecido com o da campanha, só que espalhado ao longo de
+                // várias respostas em vez de por chefe derrotado).
+                this.player.addXp(Math.round(gained / 4));
+                this.checkLevelUnlock(this.player.level);
+                this.updatePlayerHud();
 
                 if (damageMulti >= 0.95) feedback = `Perfeito! +${gained} pontos`;
                 else if (damageMulti >= 0.7) feedback = `Acertou! +${gained} pontos`;
@@ -4879,6 +5089,7 @@
                         <h1>PercentSoul</h1>
                         <button class="menu-button" data-action="play">JOGAR</button>
                         <button class="menu-button" data-action="infinite">MODO INFINITO</button>
+                        <button class="menu-button" data-action="skins">SKINS</button>
                         <button class="menu-button" data-action="ranking">RANKING</button>
                         <button class="menu-button" data-action="howto">COMO JOGAR</button>
                         <button class="menu-button" data-action="tips">MACETES</button>
@@ -4923,6 +5134,8 @@
             // não mexe mais no DOM.
             if (!document.getElementById('menuAccountBadge')) return;
 
+            if (username) await this.loadProgress();
+
             if (!username) {
                 badge.innerHTML = '';
                 return;
@@ -4937,6 +5150,96 @@
                     location.reload();
                 });
             }
+        }
+
+        // Busca o progresso permanente (nível mais alto + skin equipada)
+        // salvo na conta e atualiza o estado local. Chamado sempre que o
+        // menu é mostrado (via updateMenuAccountBadge) e de novo ao abrir
+        // a tela de SKINS, pra garantir que reflita partidas recentes.
+        async loadProgress() {
+            const profile = await ProgressService.getProfile();
+            this.highestLevel = profile.highestLevel;
+            this.selectedSkinId = profile.selectedSkin;
+        }
+
+        // Chamado sempre que o jogador sobe de nível (campanha ou modo
+        // infinito — ver victory()/infiniteSubmitAnswer()). Se for um
+        // nível novo (maior que o recorde da conta), atualiza o estado
+        // local na hora (pra já refletir na tela de SKINS) e avisa o
+        // Supabase em segundo plano (não precisa de "await": mesmo que a
+        // chamada demore ou falhe por falta de conexão, o jogo continua
+        // normalmente — na pior das hipóteses o desbloqueio só é
+        // confirmado na próxima vez que a internet estiver disponível).
+        checkLevelUnlock(level) {
+            if (level <= this.highestLevel) return;
+            this.highestLevel = level;
+            ProgressService.reportLevelReached(level);
+        }
+
+        // ====================================================================
+        // TELA DE SKINS (customização da cor da bolinha/alma)
+        // Recarrega o progresso da conta toda vez que abre (loadProgress),
+        // pra sempre refletir o nível mais alto real — inclusive se ele
+        // mudou em outro aparelho. Cada skin desbloqueada é clicável e
+        // equipa na hora (grava no Supabase via ProgressService); as
+        // bloqueadas mostram um cadeado e o nível necessário, e clicar
+        // nelas só mostra uma mensagem, sem equipar.
+        // ====================================================================
+        async showSkins() {
+            await this.loadProgress();
+
+            const mainContent = document.getElementById('menuMainContent');
+            if (mainContent) mainContent.style.display = "none";
+
+            const existingSub = document.getElementById('menuSubPage');
+            if (existingSub) existingSub.remove();
+
+            const currentSkin = getSkinById(this.selectedSkinId);
+
+            const subPage = document.createElement('div');
+            subPage.id = 'menuSubPage';
+            subPage.className = 'menu-content tips-content';
+            subPage.innerHTML = `
+                <h1 style="font-size: 30px;">SKINS</h1>
+                <div class="skin-preview-circle" id="skinPreviewCircle" style="background:${currentSkin.base}; box-shadow: 0 0 20px ${currentSkin.base}aa;"></div>
+                <div class="tip-heading" style="color:#ffaa66; text-align:center;" id="skinPreviewLabel">Equipada: ${currentSkin.label}</div>
+                <div style="text-align:center; color:#aaaaaa; font-family:'Courier New',monospace; font-size:14px; margin-bottom:14px;">
+                    Seu nível mais alto: ${this.highestLevel}
+                </div>
+                <div class="skin-grid" id="skinGrid"></div>
+                <div id="skinLockedMsg" style="min-height: 18px; text-align:center; color:#ff8888; font-family:'Courier New',monospace; font-size:13px; margin-top:10px;"></div>
+                <button class="menu-button" data-action="back" style="margin-top: 8px;">VOLTAR</button>
+            `;
+            document.querySelector('.main-menu').appendChild(subPage);
+
+            const grid = document.getElementById('skinGrid');
+            SOUL_SKINS.forEach(skin => {
+                const unlocked = this.highestLevel >= skin.unlockLevel;
+                const btn = document.createElement('button');
+                btn.className = 'skin-swatch'
+                    + (unlocked ? '' : ' locked')
+                    + (skin.id === this.selectedSkinId ? ' selected' : '');
+                btn.innerHTML = `
+                    <span class="skin-dot" style="background:${skin.base};"></span>
+                    <span class="skin-label">${unlocked ? skin.label : '🔒 Nv ' + skin.unlockLevel}</span>
+                `;
+                btn.addEventListener('click', () => {
+                    if (!unlocked) {
+                        audioSystem.playSound('back');
+                        document.getElementById('skinLockedMsg').textContent =
+                            `Desbloqueia no nível ${skin.unlockLevel} (${skin.label}).`;
+                        return;
+                    }
+                    audioSystem.playSound('click');
+                    this.selectedSkinId = skin.id;
+                    ProgressService.setSelectedSkin(skin.id);
+                    this.showSkins();
+                });
+                grid.appendChild(btn);
+            });
+
+            this.setupMenuActions('menuSubPage');
+            this.setupMenuNavigation('menuSubPage');
         }
 
         showAudioSettings() {
